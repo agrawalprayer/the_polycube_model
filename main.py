@@ -91,7 +91,7 @@ if n_sides > 99: raise NotImplementedError("n_sides should be lesser than 99.")
 
 # if the assembly is split into parallel batches, then get the split number
 if tot_splits > 1: nsplit = int(sys.argv[2])
-else: nsplit = 0 #! what does this mean? 
+else: nsplit = 0 
     
 print(f"nsplit = {nsplit}, tot_splits = {tot_splits}")
 
@@ -288,8 +288,7 @@ plt.show()
 
 # Modify file names to include the directory path
 
-#debian
-#path_name = "/media/agrawalp/221ceb7e-aa6b-4034-b2ee-bb33de6397d3/polyominoes_new/polycube/runs/{}D/".format(dim)
+#path_name = "..."
 
 #if exhaustive_search == 'on':
 #    folder_name = f"{n_tiles}s{n_sides}c_exh/data_files/"
