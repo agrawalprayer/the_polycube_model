@@ -1,0 +1,9 @@
+**/*all_genotypes.txt
+**/Data_Files/**/*
+.venv/
+**/data_files/**/*.txt
+polycube/neutral_set_estimator/**/python-*.out
+badpaths*.txt
+cleaned-repo/
+filter-work/
+work-clean/
