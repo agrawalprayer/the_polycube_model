@@ -626,7 +626,7 @@ def flatten_dict(tile_dict):
 
 #====================================================================================================#
 
-def unflatten_list(flat_list):
+def unflatten_list(flat_list, tile_names):
     """
     Convert a flat list of sides back into a dictionary format with tile names A-Z.
 
@@ -637,13 +637,17 @@ def unflatten_list(flat_list):
         - tile_dict (dict): Dictionary where keys are tile names (A-Z) and values are lists of sides.
     """
     sides_per_tile = 6
-    num_tiles = len(flat_list) // sides_per_tile
+    #num_tiles = len(flat_list) // sides_per_tile
 
     if len(flat_list) % sides_per_tile != 0:
         raise ValueError("Flat list size is not a multiple of 6.")
 
-    tile_names = list(string.ascii_uppercase[:num_tiles])  # Generate 'A', 'B', 'C', etc.
-    tile_dict = {tile_names[i]: flat_list[i * sides_per_tile : (i + 1) * sides_per_tile] for i in range(num_tiles)}
+    #tile_names = list(string.ascii_uppercase[:num_tiles])  # Generate 'A', 'B', 'C', etc.
+    #tile_dict = {tile_names[i]: flat_list[i * sides_per_tile : (i + 1) * sides_per_tile] for i in range(num_tiles)}
+    tile_dict = {
+        tile_names[i]: flat_list[i*sides_per_tile:(i+1)*sides_per_tile]
+        for i in range(len(tile_names))
+    }
     
     # Ensure all values in tile_dict are in two-digit format
     for key in tile_dict:
@@ -654,6 +658,7 @@ def unflatten_list(flat_list):
 
 def simplify_tiledict(params, tile_dict):
     """ 
+
     Simplifies the given tile_dict under three simplification rules:
     1. Zero all neutral sides
     2. Zero all sides with no partners
@@ -676,6 +681,8 @@ def simplify_tiledict(params, tile_dict):
     
     # Load rules of attachment
     rules_dict = rules_func(params)
+
+    tile_names = list(tile_dict.keys())
 
     # Flatten the tile_dict to a flat list of sides
     flat_genotype = flatten_dict(tile_dict)
@@ -714,9 +721,26 @@ def simplify_tiledict(params, tile_dict):
     #print("Renumbered orientation: ", flat_orientation)
 
     # Convert renumbered flat genotype back to tile_dict
-    renumbered_tile_dict = unflatten_list(renumbered_flat_genotype)
+    renumbered_tile_dict = unflatten_list(renumbered_flat_genotype, tile_names)
 
     return renumbered_tile_dict
+
+def simplify_orientdict(tile_dict, orient_dict):
+    " If a tile interface is neutral, lose information about its orientation. Replace it with default orientation. "
+
+    default_orient = "OOOOUU"
+    simplified_orient_dict = {}
+
+    for tile in tile_dict:
+        orient = list(orient_dict[tile])
+
+        for i, side in enumerate(tile_dict[tile]):
+            if side == 0 or side == '00':
+                orient[i] = default_orient[i]
+
+        simplified_orient_dict[tile] = ''.join(orient)
+
+    return simplified_orient_dict
 
 #====================================================================================================#
 def get_genotype_for_this_shape(path, filepath, n_tiles, n_sides, tot_splits, target_shape_index, stop_at_first=True):
@@ -758,7 +782,7 @@ def get_genotype_for_this_shape(path, filepath, n_tiles, n_sides, tot_splits, ta
         else:
             raise ValueError(f"Line {target_shape_index} not found in file.")
 
-    print("Target shape: ", target_shape)
+    #print("Target shape: ", target_shape)
 
     # ==========================================================================================================# 
     # -------------------------- Search for target shape in each nsplit_valid_shapes -------------------------- #
@@ -794,6 +818,66 @@ def get_genotype_for_this_shape(path, filepath, n_tiles, n_sides, tot_splits, ta
 
     return nsplit_shape_num_list, all_nsplit_indices
 
+#===========================================================================================================#
+def iter_genotypes_for_this_shape(path, filepath, n_tiles, n_sides,
+                                  tot_splits, target_shape_index):
+    """
+    Iterate over all genotypes corresponding to a given shape.
+
+    This is the memory-efficient version of get_genotype_for_this_shape().
+    Instead of returning a list of (nsplit, genotype_index), it yields them
+    one at a time.
+
+    Yields:
+        tuple: (nsplit, genotype_index)
+    """
+
+    # ==========================================================================================================#
+    # ------------------------- Extract shape from combined valid shapes files --------------------------------#
+    # ==========================================================================================================#
+    with open(path + filepath + 'valid_shapes.txt', 'r') as shape_file:
+        for line_index, line in enumerate(shape_file):
+            if line_index == target_shape_index:
+                coords = eval(line.strip())
+                target_shape = shift_coordinates(coords)
+                break
+        else:
+            raise ValueError(f"Line {target_shape_index} not found in file.")
+
+    # ==========================================================================================================#
+    # -------------------------- Search for target shape in each nsplit_valid_shapes --------------------------#
+    # ==========================================================================================================#
+    nsplit_shape_num_list = []
+
+    for nsplit in range(1, tot_splits + 1):
+
+        nsplit_filepath = filepath.replace('_combined_', '_nsplit_') + f"{nsplit}_"
+
+        with open(path + nsplit_filepath + 'valid_shapes.txt', 'r') as f:
+
+            for shapenum, line in enumerate(f, start=1):
+
+                shape2 = eval(line.strip())
+
+                if compare_polycubes(target_shape, shape2) == 1:
+                    nsplit_shape_num_list.append((nsplit, shapenum))
+                    break
+
+    # ==========================================================================================================#
+    # ----------------------------- Yield genotype indices one-by-one -----------------------------------------#
+    # ==========================================================================================================#
+    for nsplit, shapenum in nsplit_shape_num_list:
+
+        nsplit_filepath = filepath.replace('_combined_', '_nsplit_') + f"{nsplit}_"
+
+        with open(path + nsplit_filepath + 'shape_type.txt', 'r') as f:
+
+            for index, line in enumerate(f):
+
+                if int(line.strip()) == shapenum:
+                    yield (nsplit, index)
+
+                    
 #===========================================================================================================#
 
 def get_rep_genotype_indices_for_target_complexity(path, filepath, n_tiles, n_sides, tot_splits, complexity_name_for_filter, num_of_groups):
@@ -856,7 +940,7 @@ def get_rep_genotype_indices_for_target_complexity(path, filepath, n_tiles, n_si
     filtered_shape_numbers = []
 
     shape_numbers = np.arange(1, len(combined_shapes) + 1)  # Shape numbers start from 1
-    complexity_data = np.loadtxt(path + filepath + complexity_name_for_filter + '.txt', dtype=int)  # Load complexity 
+    complexity_data = np.loadtxt(path + filepath + complexity_name_for_filter + '.txt', dtype=float)  # Load complexity 
     sorted_complexity, sorted_shape_numbers = sort_together([complexity_data, shape_numbers], reverse=False)  # Sort complexity and shape numbers together in ascending order of complexity values
 
     num_of_shapes = len(sorted_complexity)
@@ -1050,7 +1134,7 @@ def get_genotype_groups_based_on_complexity(path, filepath, tot_splits, complexi
         nsplit_shape_type = np.loadtxt(path + nsplit_filepath + 'shape_type.txt', dtype=int)
         nsplit_complexity = np.loadtxt(path + nsplit_filepath + 'complexity.txt', dtype=int)
         nsplit_complexity_species = np.loadtxt(path + nsplit_filepath + 'complexity_species.txt', dtype=int)
-        nsplit_lz_complexity = np.loadtxt(path + nsplit_filepath + 'lz_complexity.txt', dtype=int)
+        nsplit_lz_complexity = np.loadtxt(path + nsplit_filepath + 'lz_complexity.txt', dtype=float) # forward lz is int, symmetric lz is float because of log_2
 
         for i, shape_num in enumerate(nsplit_shape_type):
             if shape_num != 0:
