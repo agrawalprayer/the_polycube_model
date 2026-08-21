@@ -20,6 +20,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import LightSource
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+from matplotlib.colors import ListedColormap
 
 # Import user defined packages
 from utils import return_lengths, convert_tilecoord_to_2d_matrix
@@ -40,7 +41,8 @@ def plot_shape_mat(ax3,shape_matrix):
     n_rows = len(shape_matrix); n_cols = len(shape_matrix[0])
 
     # Plot matrix
-    cmap = plt.get_cmap('Blues')#.copy()
+    #cmap = plt.get_cmap('Blues')#.copy()
+    cmap = ListedColormap(['gray'])
     cmap.set_under('white')
     #shape_mat_flip = np.flipud(shape_matrix) #? NEW ADDITION: it is necessary only when shape_mat has been flipped once
     ax3.matshow(shape_matrix, cmap=cmap, vmin = 0.5, origin='lower')
@@ -425,7 +427,7 @@ def plot_all_polycubes(params, path, filepath, sort, dim=3, first_n_shapes=None,
         freq_percent = np.around((freq_sort[i]/np.sum(freq_sort))*100, 2) # frequency percentage
 
         if symmetry_classes_sort[i] == 'X':
-            title = f"{int(complexity_species_sort[i])}$\\tilde{{K}}_s$ {int(complexity_sort[i])}$\\tilde{{K}}_c$ {int(lz_complexity_sort[i])}$\\tilde{{K}}_{{lz}}$ \nf={freq_percent}%"
+            title = f"{int(complexity_species_sort[i])}$\\tilde{{K}}_s$ {int(complexity_sort[i])}$\\tilde{{K}}_i$ {int(lz_complexity_sort[i])}$\\tilde{{K}}_{{lz}}$ \nf={freq_percent}%"
             
         else:
             symmetry_class_label = symmetry_classes_sort[i]
@@ -434,7 +436,7 @@ def plot_all_polycubes(params, path, filepath, sort, dim=3, first_n_shapes=None,
             if dim == 2:
                 title = (
                     f"{int(complexity_species_sort[i])}$\\tilde{{K}}_s$ "
-                    f"{int(complexity_sort[i])}$\\tilde{{K}}_c$ "
+                    f"{int(complexity_sort[i])}$\\tilde{{K}}_i$ "
                     f"{int(lz_complexity_sort[i])}$\\tilde{{K}}_{{lz}}$\n"
                     f"f={freq_percent}%, "
                     f"$\\mathrm{{{symmetry_class_label}}}$"
@@ -442,18 +444,36 @@ def plot_all_polycubes(params, path, filepath, sort, dim=3, first_n_shapes=None,
             else:
                 title = (
                     f"{int(complexity_species_sort[i])}$\\tilde{{K}}_s$ "
-                    f"{int(complexity_sort[i])}$\\tilde{{K}}_c$ "
+                    f"{int(complexity_sort[i])}$\\tilde{{K}}_i$ "
                     f"{int(lz_complexity_sort[i])}$\\tilde{{K}}_{{lz}}$\n"
                     f"f={freq_percent}%, "
                     f"$\\mathrm{{{symmetry_class_label}}}_{{{symmetry_order_label}}}$"
                 )
             
         if dim==3: ax.set_title(title, fontsize=14, loc='right')
-        if dim==2: ax.set_title(title, fontsize=12, loc='center', y=0.9)
+        if dim==2: ax.set_title(title, fontsize=12, loc='left', y=0.7)
 
         #ax.axis('on')
 
+    # separator lines between rows of subplots
+    # from matplotlib.lines import Line2D
+
+    # fig.canvas.draw()  # make sure axes positions are finalized
+
+    # for r in range(rows - 1):
+    #     upper_ax = fig.axes[r * cols]
+    #     lower_ax = fig.axes[(r + 1) * cols]
+
+    #     y = (upper_ax.get_position().y0 + lower_ax.get_position().y1) / 2
+
+    #     fig.add_artist(Line2D(
+    #         [0.1, 0.86], [y, y],
+    #         transform=fig.transFigure,
+    #         color='gray',
+    #         linewidth=1
+    #     ))
     # Adjust spacing between subplots to control gaps (tweak wspace/hspace as needed)
     #fig.subplots_adjust(wspace=0.05, hspace=0.05,bottom=0.05)
-    plt.show()
+    #fig.savefig('20mer_zoo.png', bbox_inches='tight', dpi=400)
+    #plt.show()
     #return ax
