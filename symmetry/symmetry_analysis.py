@@ -187,23 +187,31 @@ def permitted_operations(coord_list):
     return rot_axes, rot_angles, ref_planes, d_list, rotoJ_axes, rotoJ_angles, rotoJ_planes, rotoJ_d_list, operation_num
 
 #======================================================================================================================#
-def get_symmetry_order(coord_list, dim, return_sym_class=False):
+def get_symmetry_order(coord_list, dim, return_sym_class=False, return_transformed_coords=False):
     """
     Given a polycube, return the order of its symmetry group after permorming all "permitted" operations.
     
     [Author: Prarthana Agrawal]
-    [Date: 12 Feb 2025]
-    [Version: 0.1]
+    [Date: 06 May 2026]
+    [Version: 0.2]
 
     Args:
         - coord_list (list): list of tile-coordinates of the polycube.
         - return_sym_class (bool): return the class of the polycube (out of 33 classes of O3 group)
+        - return_transformed_coords (bool): return the dict of transformed coordinates for polycube preserving symmetry operations. keys: operation number (1 to 48), values: list of transformed coordinates. 
         - dim (int): Dimensionality of the polycube (2D or 3D). Default is 3D. 
         For 2D, first convert to 2D matrix using convert_tilecoord_to_2d_matrix() and then calculated the symmetry order={1,2,4,8} and class={C1,C2,C4,D1,D2,D4}.
 
     Returns:
         - sym_count (int): order of the symmetry group of the polycube.
+        - sym_class (str): class of the polycube (out of 33 classes of O3 group).
+        - transformed_coords (dict): dict of transformed coordinates for polycube preserving symmetry operations.
+        - sym_operations (list): list of symmetry operations (operation numbers) that preserve the polycube.
 
+    Older Versions:
+        # Improvement over v0.1 [12 Feb 2025]
+            - added return_transformed_coord options to return the transformed coordinates and symmetry operations for polycube preserving symmetry operations.
+    
     Raises:
         - None
     """
@@ -221,6 +229,7 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
         sym_count = 1 # count number of symmetries
         i = 1 # operation number (matched with notebook polyominoes#3)
         sym_operations = []
+        transformed_coords_by_op = {}
 
         #? ============================================== Rotations ========================================================
         #print("============== Rotations ===============")
@@ -231,6 +240,7 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
             if sorted(coord_list) == sorted(shifted_coord): 
                 sym_count+=1
                 sym_operations.append(i)
+                transformed_coords_by_op[i] = shifted_coord
             i+=1
 
         #? ============================================= Reflections =======================================================
@@ -243,6 +253,7 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
             if sorted(coord_list) == sorted(shifted_coord): 
                 sym_count+=1
                 sym_operations.append(i)
+                transformed_coords_by_op[i] = shifted_coord
             i+=1
 
         #? ============================================ Rotoreflections ====================================================
@@ -259,6 +270,7 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
                 if sorted(coord_list) == sorted(shifted_coord): 
                     sym_count+=1
                     sym_operations.append(i)
+                    transformed_coords_by_op[i] = shifted_coord 
                 i+=1
 
         #? Operation J = A x E =========================================================================================
@@ -279,6 +291,7 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
                 if sorted(coord_list) == sorted(shifted_coord): 
                     sym_count+=1
                     sym_operations.append(i)
+                    transformed_coords_by_op[i] = shifted_coord
                 i+=1
 
         #? Inversion ====================================================================================================
@@ -288,9 +301,11 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
         if sorted(coord_list) == sorted(shifted_coord): 
             sym_count+=1
             sym_operations.append(i)
+            transformed_coords_by_op[i] = shifted_coord
         i+=1
             
         sym_operations.append(i) # identity operation i= 48 
+        transformed_coords_by_op[i] = coord_list # last operation is identity, so transformed coordinates are same as original coordinates
         #print("Order =", sym_count)
 
         if return_sym_class:
@@ -304,7 +319,10 @@ def get_symmetry_order(coord_list, dim, return_sym_class=False):
     else: 
         raise Exception("Dimension not supported. Please use dim=2 or dim=3.")
     #print("Symmetry operations:", sym_operations)
-    return sym_count, sym_class
+    if return_transformed_coords:
+        return sym_count, sym_class, transformed_coords_by_op, sym_operations
+    else:
+        return sym_count, sym_class
 
 #======================================================================================================#
 def get_2d_symmetry_order_and_class(coords):
