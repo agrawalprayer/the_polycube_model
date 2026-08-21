@@ -83,6 +83,8 @@ def zero_sides(t2_origin, tile_coord, rot_interfaces, available_sides):
 #==========================================================================================================#
 def path_finder(available_sides, available_orient, all_sides, relevant_indices, parent, lineage, choice_line, choice_tree, t2index, comp_tile2_indices, rules_dict):
     """ 
+    Updated: 13 July 2026
+
     Generates a choice tree while tracing a particular path (lineage).
 
     Args:
@@ -100,6 +102,8 @@ def path_finder(available_sides, available_orient, all_sides, relevant_indices, 
 
     Returns:
         - random_index (int): Index of the randomly chosen open side of tile-1.
+        - random_side (str): Chosen random side of tile-1.
+        - comp_side (str): Complementary side of the chosen random side of tile-1.
         - t1_orient (str): Orientation of the chosen random side of tile-1.
         - t2index (int): Chosen index of tile-2 from complementary tile 2 indices.
         - lineage (list): Updated lineage with choices made in this iteration.
@@ -157,5 +161,5 @@ def path_finder(available_sides, available_orient, all_sides, relevant_indices, 
 
     choice_tree = temp_choice_tree.copy()
     #p#print("Temp Choice Tree {} \nChoice Tree {}".format(temp_choice_tree, choice_tree))
-    return random_index, t1_orient, t2index, lineage, choice_line, choice_tree
+    return random_index, random_side, comp_side, t1_orient, t2index, lineage, choice_line, choice_tree
 

@@ -25,14 +25,19 @@ import random
 from more_itertools import sort_together
 from core import rules_func, zero_sides, origin_finder, path_finder
 from utils import extract_underscore, return_lengths
+from utils.genotype_utils import simplify_tiledict, simplify_orientdict
+from utils.print_utils import print_msg_box
 
 def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line):
     """ 
     Self-assembly of polyominoes.
 
-    Version: 0.3 (created on 03 Mar 2025)
+    Version: 0.4 (created on 13 Jul 2026)
 
     Old Versions:
+
+        # 0.3 (created on 03 Mar 2025)
+            - modification: Old version did not return complexity based on actually used interfaces. Now complexity is calculated based on the number of interfaces that are actually realised in the assembly process. Also, the complexity is calculated after the assembly process is complete, not during the assembly process.
 
         # 0.2 (created on 04 Feb 2025)
             - modification: Zero all sides with no complementary partners
@@ -85,7 +90,7 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
     if assembly_type == 'seeded': seed_tile = tile_types[0] # Using seeded tile assembly i.e. first tile as seed tile
     elif assembly_type == 'unseeded': seed_tile = random.sample(tile_types,1)[0] # [0] here extracts list element
     #! CANNOT USE PATH_FINDER FOR UNSEEDED ASSEMBLY as no seedtile choices are recorded 
-    #p#print("Seed tile is", seed_tile, tile_dict[seed_tile])
+    print("Seed tile is", seed_tile, tile_dict[seed_tile])
     picked_tiles = [seed_tile]
 
     #?========================= Store all available "placed" sides open to further attachment ======================#
@@ -93,43 +98,48 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
     available_orient = orient_dict[seed_tile] # string of orientations of open sides
     origin0 = (0,0,0); tile_coord = [origin0] # list of tile origins
 
-    used_interfaces = set(available_sides.copy()) # Used interfaces list to find complexity 
+    #used_interfaces = set(available_sides.copy()) # Used interfaces list to find complexity 
+    realised_interfaces = {'00'} # Used interfaces which are actually realised in the assembly process
+    realised_tile_dict = {seed_tile: tile_dict[seed_tile]}
+    realised_orient_dict = {seed_tile: orient_dict[seed_tile]}
+        
     #used_interfaces = sorted(set(available_sides.copy()), key=available_sides.copy().index) #! sorting set to preserve index--check if needed!!
-    #p#print("Open sides = {}, \nTile Coordinates = {}".format(available_sides,tile_coord))
-    #p#print("Orientation of open sides", available_orient)
+    print("Open sides = {}, \nTile Coordinates = {}".format(available_sides,tile_coord))
+    print("Orientation of open sides", available_orient)
 
     #?================================= Store all sides (pool of tile2-sides) =====================================#
     all_sides = list()
     for tile in tile_types:
         all_sides.extend(list(tile_dict[tile]))
 
-    #p#print("All tile-2 sides before zeroing =", all_sides)
+    print("All tile-2 sides before zeroing =", all_sides)
     all_sides = ['00' if side in neutral_sides else side for side in all_sides]
     #! NEW LINE ADDED - ZEROES SIDES WITH NO COMPLEMENTARY SIDE IN GIVEN GENOTYPE --  REQUIRES TESTING
     all_sides = [side if (side == '00' or rules_dict[side] in all_sides) else '00' for side in all_sides]
-    #p#print("All tile-2 sides after zeroing =", all_sides)
+    print("All tile-2 sides after zeroing =", all_sides)
 
     #?========================= Extract indices of non-neutral sides from seed tile ===============================#
     relevant_indices = list(filter(lambda pos:(available_sides[pos] not in neutral_sides and rules_dict[available_sides[pos]] in all_sides),range(len(available_sides)))) # remove open sides which do not have comp side in tile2allsides
-    #p#print("Relevant Indices {}".format(relevant_indices))
+    print("Relevant Indices {}".format(relevant_indices))
     
     #?======================== If seed_tile cannot attach to anything, terminate the function =====================#
     if len(relevant_indices) == 0:
-        complexity = len(used_interfaces)
-        return tile_coord, complexity, [], [], picked_tiles #! What should be the value of lineage and choice tree?
+        #complexity = len(realised_interfaces)
+        return tile_coord, [], [], picked_tiles, realised_interfaces, realised_tile_dict, realised_orient_dict #! What should be the value of lineage and choice tree?
+        # tile_coord, lineage, choice_tree, picked_tiles, realised_interfaces, simplify_realised_tiledict, simplify_realised_orientdict
 
     #?============================================== Assembly =====================================================#
     n_open_pos = 1; #! Should this be initialized as n_open_pos = len(relevant_indices)?
     cutoff = False; first_run = True
     while n_open_pos > 0 and cutoff == False: # run till no open sides left or size exceeds threshold D_max
-        #p#print("="*50)
-        #p#print("Choice line", choice_line)
+        print("="*50)
+        print("Choice line", choice_line)
 
         if assembly_type == 'unseeded': choice_line = [] # no choice tree for unseeded assembly #! new addition
 
         # ================================================ First Run ============================================ #
         if first_run == True:
-            #p#print_msg_box("First run")
+            print_msg_box("First run")
             # -------------------------------------------- Tile1 ------------------------------------------------ #
             # if a pre-determined 'choice_line' is passed, use that to dictate choice of open sides else pick randoml
             if len(choice_line)==0: random_index = random.sample(relevant_indices,1)[0] #relevant_indices[0]
@@ -137,8 +147,8 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
                 random_index = extract_underscore(choice_line[0], 'first') 
             random_side = available_sides[random_index] # return side at random index (tile1)
             t1_orient = available_orient[random_index] # return orientation of the chosen random side
-            #p#print("Random index = {}, Random side = {}".format(random_index, random_side)) 
-            #p#print_msg_box("random index and orientation = "+str(random_index)+" "+str(t1_orient))
+            print("Random index = {}, Random side = {}".format(random_index, random_side)) 
+            print_msg_box("random index and orientation = "+str(random_index)+" "+str(t1_orient))
 
             # --------------------------------------------- Tile2 ------------------------------------------------ #
             comp_side = rules_dict[random_side] # return complementary side of the random side
@@ -150,9 +160,12 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
             else: 
                 t2index = extract_underscore(choice_line[0], 'second') # if choice line is given
             if len(choice_line) > 0: del choice_line[0]  
-            #p#print("Complementary side = {} \nComplementary tile2 indices = {} \nChosen t2 index = {}".format(comp_side, comp_tile2_indices, t2index))
-            #p#print_msg_box("t2 index = "+str(t2index))
+            print("Complementary side = {} \nComplementary tile2 indices = {} \nChosen t2 index = {}".format(comp_side, comp_tile2_indices, t2index))
+            print_msg_box("t2 index = "+str(t2index))
             
+            realised_interfaces.add(random_side)
+            realised_interfaces.add(comp_side)
+
             # ------------------------------------------- Choice Tree --------------------------------------------- #
             lineage = [str(random_index)+"_"+str(t2index)] # stores current choices made
             other_choices = list(filter(lambda ind: (ind != random_index), relevant_indices)) # other open side choices
@@ -161,7 +174,7 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
             else: choice_tree = []
             for t2in in comp_tile2_indices:
                 choice_tree.append([str(random_index)+"_"+str(t2in)]) # Open side with possible t2 index choices
-            #p#print("Choice tree {}, lineage {}".format(choice_tree, lineage))
+            print("Choice tree {}, lineage {}".format(choice_tree, lineage))
             first_run = False
 
         # ================================================== Next Runs ============================================ #
@@ -185,8 +198,11 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
             else:
 
                 parent = lineage.copy()
-                random_index, t1_orient, t2index, lineage, choice_line, choice_tree = path_finder(available_sides, available_orient, all_sides, relevant_indices, parent, lineage, choice_line, choice_tree, t2index, comp_tile2_indices, rules_dict)
+                random_index, random_side, comp_side, t1_orient, t2index, lineage, choice_line, choice_tree = path_finder(available_sides, available_orient, all_sides, relevant_indices, parent, lineage, choice_line, choice_tree, t2index, comp_tile2_indices, rules_dict)
         
+            realised_interfaces.add(random_side)
+            realised_interfaces.add(comp_side)
+
         # If there are no complementary sides for this chosen open side - ideally this should not happen!!
         if len(comp_tile2_indices) == 0:
             raise Exception("No Complementary side found for this open side")
@@ -199,13 +215,17 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
         tile2_interface = tile_dict[tile2] # interface of tile2
         tile2_orients = orient_dict[tile2] # orientations of interfaces of tile2
         tile2_index = t2index % d # relative index of comp side on tile2_interface {0,1,2,3,4,5}
-        #p#print("t2 index = {}, tile2_num = {}, tile2 = {}, tile2_interface = {}, tile2_index = {}".format(t2index, tile2_num, tile2, tile2_interface, tile2_index))
+        print("t2 index = {}, tile2_num = {}, tile2 = {}, tile2_interface = {}, tile2_index = {}".format(t2index, tile2_num, tile2, tile2_interface, tile2_index))
 
         tile2_exp_index = index_rules_dict[random_index % d] # expected index of comp side for attachment
         diff = tile2_exp_index - tile2_index # difference between expected and actual index of comp side
         rotated_interface = tile2_interface.copy() # to store the rotated set of interfaces
         #print("Actual index={}, Expected index={}, Diff={}".format(tile2_index, tile2_exp_index, diff))
-        used_interfaces.update(tile2_interface) # store all unique interfaces used --to calculate complexity
+        #used_interfaces.update(tile2_interface) # store all unique interfaces used --to calculate complexity
+
+        if tile2 not in realised_tile_dict:
+            realised_tile_dict[tile2] = tile_dict[tile2].copy()
+            realised_orient_dict[tile2] = orient_dict[tile2]
 
         # list of all rotations of a cube with respective orientations
         rot_orient_dict = dict({
@@ -232,7 +252,7 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
         rot = [rot for rot in relevant_rotations if rot_orient_dict[rot][orient_num][tile2_exp_index] == t1_orient][0] 
         # choose that rotation and orientation for which tile2 index orients as required eg at index 3 'Up'
         rotated_interface = [tile2_interface[int(rot[i])-1] for i in range(d)] 
-        #p#print("Relevant Rotations {} \nChosen Rotation {} \nRotated Interface {}".format(relevant_rotations, rot, rotated_interface))
+        print("Relevant Rotations {} \nChosen Rotation {} \nRotated Interface {}".format(relevant_rotations, rot, rotated_interface))
     
         update_orient_temp = '' #temporary variable to store new orientations
         for oi in range(d):
@@ -260,21 +280,39 @@ def assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line
         tile_coord.append(t2_origin) # Store origin of attached tile
         available_sides.extend(rotated_interface) # Add the new tile's sides in open sides
         available_orient = available_orient + updated_orient # Add the new orientations of tile2 to available_orient
-        #p#print("Available sides = {}, \nTile Coordinates = {}".format(available_sides,tile_coord))
-        #p#print("Orientation of open sides", available_orient)
+        print("Available sides = {}, \nTile Coordinates = {}".format(available_sides,tile_coord))
+        print("Orientation of open sides", available_orient)
 
         # Zero the neutral sides
         available_sides = ['00' if x in neutral_sides else x for x in available_sides]
-        #p#print("Available sides after zeroing = {}".format(available_sides))
+        print("Available sides after zeroing = {}".format(available_sides))
 
         # Non-zero sides with available partners are relevant sides
         relevant_indices = list(filter(lambda pos:(available_sides[pos] not in neutral_sides and rules_dict[available_sides[pos]] in all_sides),range(len(available_sides)))) # remove open sides which do not have comp side in tile2allsides
         n_open_pos = len(relevant_indices) # Number of open sides
-        #p#print("Relevant indices {} \nn_open_pos {}".format(relevant_indices, n_open_pos))
+        print("Relevant indices {} \nn_open_pos {}".format(relevant_indices, n_open_pos))
         
         # =================================== Criteria for unbounded assembly ======================================== #
         len_x, len_y, len_z = return_lengths(tile_coord)[0]
         cutoff = any(li >= Dmax for li in [len_x, len_y, len_z]) or len(picked_tiles) > max_tiles
 
-    complexity = len(used_interfaces)
-    return tile_coord, complexity, lineage, choice_tree, picked_tiles
+    #! Correction (10 July 2026): complexity should be the minimum number of interfaces USED not just PRESENT.
+    # Example: if used_interfaces = {0,1,2,3}, but 3 was blocked and never used, then 3 is effectively neutral ie 0.
+    # So, complexity is 3 not 4.
+    #print("Num of Used interfaces = {}".format(len(used_interfaces)))
+    realised_interfaces = {side for side in realised_interfaces if side == '00' or rules_dict[side] in realised_interfaces}
+    #print("Actual number of used interfaces = {}".format(len(used_interfaces)))
+    #complexity = len(realised_interfaces) #! Move complexity calculation to valid_sol_checker
+
+    # Convert tile dict and orient dict to only include realised tiles and their interfaces
+    # For orient dict, if a side is not realised, its orientation is set to default orientation for that index
+    for tile in realised_tile_dict:
+        realised_tile_dict[tile] = [side if side in realised_interfaces else '00' for side in realised_tile_dict[tile]]
+
+    #print("Realised tile dict = {}".format(realised_tile_dict))
+    #print("Realised orient dict = {}".format(realised_orient_dict))
+    simplify_realised_tiledict = simplify_tiledict(params, realised_tile_dict)
+    #print("Simplified realised tile dict = {}".format(simplify_realised_tiledict))
+    simplify_realised_orientdict = simplify_orientdict(simplify_realised_tiledict, realised_orient_dict.copy())
+
+    return tile_coord, lineage, choice_tree, picked_tiles, realised_interfaces, simplify_realised_tiledict, simplify_realised_orientdict

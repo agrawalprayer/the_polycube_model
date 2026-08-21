@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 from utils import return_lengths
+from utils.binary_utils import tiledict_orientdict_to_binary, lempel_ziv_complexity76_symmetric
 from core.self_assembly import assembly_func
 from symmetry import compare_polycubes
 from plots import plot_all_cubes
@@ -31,9 +32,13 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
     Checks if the rule gives a bounded, deterministic shape.
     Returns 1 if solution is valid else returns 0, along with the tile coordinates
 
-    Version: 0.4 (created on 01 Oct 2025)
+    Version: 0.6 (created on 19 Jul 2026)
 
     Old Versions:
+        # 0.5 (created on 13 Jul 2026)
+            - no orientation padding to compute LZ for dim=2.
+        # 0.4 (created on 01 Oct 2025)
+            - calculate all three complexities of realised assembly kits in all trajectories and return minimum across all k-runs.
         # 0.3 (24 July 2025)
             - added return_all_complexities flag to return complexity from all k-runs instead of just minimum complexity. default is False to maintain backward compatibility.
              if return_all_complexities is True, then complexity_list is returned instead of min(complexity_list). This is to analyze the variation in complexity across different k-runs for the same solution
@@ -84,13 +89,38 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
     max_tiles = assembly_settings['max_tiles']
     kmax = assembly_settings['kmax']
     assembly_type = assembly_settings['assembly_type']
+    n_sides = len(params['side_types'])
+    dim = params['dim']
 
     first_choice_line = []
 
+    # utility function
+    def compute_complexities(n_sides, realised_interfaces, picked_tiles, simplify_realised_tiledict, simplify_realised_orientdict):
+        # Compute the three complexities of the realised assembly kit
+
+        complexity = len(realised_interfaces)
+        complexity_species = len(set(picked_tiles))
+        assert complexity_species == len(set(simplify_realised_tiledict.keys())), "Mismatch in complexity species calculation"
+
+        nonzero_tile_dict = {k: v for k, v in simplify_realised_tiledict.items() if not all(side == '00' for side in v)}
+        nonzero_orient_dict = {k: simplify_realised_orientdict[k] for k in nonzero_tile_dict}
+        binary_genotype = tiledict_orientdict_to_binary(n_sides, nonzero_tile_dict, nonzero_orient_dict, dim)
+        lz_complexity = lempel_ziv_complexity76_symmetric(binary_genotype)
+
+        return complexity, complexity_species, lz_complexity
+    
+
     #? ========================================== Unseeded Assembly ================================================ #
     if assembly_type == 'unseeded':
-        tile_coord, complexity, _, _, picked_tiles = assembly_func(params, assembly_settings, tile_dict, orient_dict, first_choice_line) # the _ are lineage and choice_tree which are not needed here
+        #tile_coord, complexity, _, _, picked_tiles = assembly_func(params, assembly_settings, tile_dict, orient_dict, first_choice_line) # the _ are lineage and choice_tree which are not needed here
+        
+        tile_coord, _, _, picked_tiles, realised_interfaces, simplify_realised_tiledict, simplify_realised_orientdict = assembly_func(params, assembly_settings, tile_dict, orient_dict, first_choice_line) # the _ are lineage and choice_tree which are not needed here
+
+        complexity, complexity_species, lz_complexity = compute_complexities(n_sides, realised_interfaces, picked_tiles, simplify_realised_tiledict, simplify_realised_orientdict)
+
         complexity_list = [complexity] # stores the complexity from each k-run
+        complexity_species_list = [complexity_species] # stores the complexity species from each k-run
+        lz_complexity_list = [lz_complexity] # stores the lz complexity from each k-run
         
         (len_x, len_y, len_z) = return_lengths(tile_coord)[0] # width and height of assembly
         
@@ -98,7 +128,7 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
         if len_x >= Dmax or len_y >= Dmax or len_z >= Dmax or len(tile_coord) >= max_tiles: 
             sol_stats['UBD'] = sol_stats['UBD'] + 1; output = 0
             #return output, None, None, None #! newly uncommented
-            return output, tile_coord, picked_tiles, min(complexity_list), sol_stats # returns tile coord and picked tiles from the very first k-run
+            return output, tile_coord, picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats # returns tile coord and picked tiles from the very first k-run
             #! does min(complexity_list) serve any purpose here?
 
         # ------------------------------------ check for determinism ---------------------------------- #
@@ -111,9 +141,13 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
             count = 1
             for _ in range(kmax):
                 choice_line = []
-                tile_coord, complexity, _, _, picked_tiles = assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line)
+                tile_coord, _, _, picked_tiles, realised_interfaces, simplify_realised_tiledict, simplify_realised_orientdict = assembly_func(params, assembly_settings, tile_dict, orient_dict, choice_line)
 
+                complexity, complexity_species, lz_complexity = compute_complexities(n_sides, realised_interfaces, picked_tiles, simplify_realised_tiledict, simplify_realised_orientdict)
                 complexity_list.append(complexity)
+                complexity_species_list.append(complexity_species)
+                lz_complexity_list.append(lz_complexity)
+
                 second_shape = tile_coord.copy()
 
                 if compare_polycubes(second_shape, first_shape) == 1:  # if two shapes are equivalent under symmetry operations  
@@ -122,32 +156,35 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
                     second_shape = [] # to prevent garbage values filling in for the next iteration
                 else:
                     sol_stats['ND'] = sol_stats['ND'] + 1; output = 0
-                    #return output, None, None, None # fisrt_shape, min(complexity_list)
+                    #return output, None, None, None # first_shape, min(complexity_list)
                     if return_all_complexities:
-                        return output, very_first_shape, very_first_picked_tiles, complexity_list, sol_stats
+                        return output, very_first_shape, very_first_picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
                     else:
-                        return output, very_first_shape, very_first_picked_tiles, min(complexity_list), sol_stats
+                        return output, very_first_shape, very_first_picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats
                         #break # non-deterministic
 
             if count == kmax + 1:
                 output = 1
                 sol_stats['valid'] = sol_stats['valid'] + 1
                 if return_all_complexities:
-                   return output, very_first_shape, very_first_picked_tiles, complexity_list, sol_stats 
+                   return output, very_first_shape, very_first_picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
                 else:
-                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), sol_stats
+                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats
                 #! Correction 1 oct 2025: previously returned first_picked_tiles
                 #! this led to prints tile coord from last k-run while picked tiles from first run
             else:
                 raise Exception("Error: ND shape should have exited loop earlier. Something's wrong!")
 
     #? ========================================= Seeded Assembly ================================================ #
-    tile_coord, complexity, lineage, first_tree, picked_tiles = assembly_func(params, assembly_settings, tile_dict, orient_dict, first_choice_line)
+    tile_coord, lineage, first_tree, picked_tiles, realised_interfaces, simplify_realised_tiledict, simplify_realised_orientdict = assembly_func(params, assembly_settings, tile_dict, orient_dict, first_choice_line)
     full_tree = copy.deepcopy(first_tree) # shallow copy will affect value of full_tree if first_tree is sliced
     terminals = [list(lineage)] # lineage returned is a fully explored path aka terminal end
     #p#print("Terminals {} \nFirst Tree {} \nLineage {}".format(terminals, first_tree, lineage))
       
+    complexity, complexity_species, lz_complexity = compute_complexities(n_sides, realised_interfaces, picked_tiles, simplify_realised_tiledict, simplify_realised_orientdict)
     complexity_list = [complexity]
+    complexity_species_list = [complexity_species]
+    lz_complexity_list = [lz_complexity]
 
     # To plot the polycube 
     #fig = plt.figure()
@@ -163,19 +200,19 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
         sol_stats['UBD'] = sol_stats['UBD'] + 1; output = 0
         #return output, None, None, None #! newly uncommented
         if return_all_complexities:
-            return output, tile_coord, picked_tiles, complexity_list, sol_stats
+            return output, tile_coord, picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
         else:
             #! does min(complexity_list) serve any purpose here?
-            return output, tile_coord, picked_tiles, min(complexity_list), sol_stats 
+            return output, tile_coord, picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats
 
     else: # ======================== Check for determinism ========================= #
         if len(first_tree) < 2: # len = 0 means seed tile had no attachments, 1 means no alternative choices are there
             sol_stats['valid'] = sol_stats['valid'] + 1; output = 1
             #return output, None, None, None #! newly uncommented
             if return_all_complexities:
-                return output, tile_coord, picked_tiles, complexity_list, sol_stats
+                return output, tile_coord, picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
             else:
-                return output, tile_coord, picked_tiles, complexity, sol_stats  #! PLEASE INSPECT IF THIS LINE IS CORRECT #! complexity vs min(complexity_list)
+                return output, tile_coord, picked_tiles, complexity, complexity_species, lz_complexity, sol_stats  #! PLEASE INSPECT IF THIS LINE IS CORRECT #! complexity vs min(complexity_list)
 
         filtered_nodes = list(filter(lambda node: node not in terminals, first_tree))
         choice_line = filtered_nodes[0] #random.choice(filtered_nodes) 
@@ -187,7 +224,7 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
         count = 1
 
         while True: # loop over min(all possible, kmax) paths
-            tile_coord, complexity, lineage, choice_tree, picked_tiles = assembly_func(params, assembly_settings,tile_dict, orient_dict, choice_line)
+            tile_coord, lineage, choice_tree, picked_tiles, realised_interfaces,  simplify_realised_tiledict, simplify_realised_orientdict = assembly_func(params, assembly_settings,tile_dict, orient_dict, choice_line)
             choice_line = []
             terminals.append(lineage)
             #p#print("Terminals {} \nChoice Tree {} \nLineage {}".format(terminals, choice_tree, lineage))
@@ -228,13 +265,17 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
             #p#print("Full tree after removing redundant values", full_tree)
 
             #============================================== SHAPE COMPARISON ==========================================#
+            complexity, complexity_species, lz_complexity = compute_complexities(n_sides, realised_interfaces, picked_tiles, simplify_realised_tiledict, simplify_realised_orientdict)
             complexity_list.append(complexity)
+            complexity_species_list.append(complexity_species)
+            lz_complexity_list.append(lz_complexity)
+
             second_shape = tile_coord.copy()
 
-            #fig = plt.figure()
-            #ax1 = fig.add_subplot(111, projection='3d')
-            #ax1.view_init(elev=-149, azim=138)
-            #plot_all_cubes(params, ax1, tile_coord, picked_tiles, cube_outline='False', axes_lines='False')
+            # fig = plt.figure()
+            # ax1 = fig.add_subplot(111, projection='3d')
+            # ax1.view_init(elev=-149, azim=138)
+            # plot_all_cubes(params, ax1, tile_coord, picked_tiles, cube_outline='False', axes_lines='False')
 
             if compare_polycubes(second_shape, first_shape) == 1:  # if two shapes are equivalent under symmetry operations  
                 count = count + 1
@@ -243,10 +284,10 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
             else:
                 sol_stats['ND'] = sol_stats['ND'] + 1; output = 0
                 if return_all_complexities:
-                    return output, very_first_shape, very_first_picked_tiles, complexity_list, sol_stats
+                    return output, very_first_shape, very_first_picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
                 else:
                     #return output, None, None, None # fisrt_shape, min(complexity_list)
-                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), sol_stats
+                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats
                 #break # non-deterministic
 
             #? if all elements in full tree are fully explored  or reached kmax iterations then end
@@ -256,9 +297,9 @@ def valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_sta
                 output = 1; sol_stats['valid'] = sol_stats['valid'] + 1
                 #p#print("len(terminals)", len(terminals), "len(full_tree)", len(full_tree))
                 if return_all_complexities:
-                    return output, very_first_shape, very_first_picked_tiles, complexity_list, sol_stats
+                    return output, very_first_shape, very_first_picked_tiles, complexity_list, complexity_species_list, lz_complexity_list, sol_stats
                 else:
-                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), sol_stats
+                    return output, very_first_shape, very_first_picked_tiles, min(complexity_list), min(complexity_species_list), min(lz_complexity_list), sol_stats
             else:         
                 #? Choose a new choice line for next iteration
                 filtered_nodes_deepcopy = [copy.deepcopy(node) for node in full_tree if node not in terminals]
