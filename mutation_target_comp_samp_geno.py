@@ -33,11 +33,14 @@ Do genotypes of high complexity phenotypes mutate to genotypes of low complexity
 
 #-----------------------------------------------------------------------------------------------------#
 [Author: Prarthana Agrawal]
-[Date: 17 Sep 2025]
-[Version: 0.1]
+[Date: 20 Jul 2026]
+[Version: 0.2]
 #-----------------------------------------------------------------------------------------------------#
 Older versions:
     # built using mutation.py
+
+    - v0.1 17 Sep 2025
+        n_point_mutate now accepts tile_dict as input instead of genotype string. Also it outputs mutated tile dict.
 
 Example Use:
     python mutation_target_comp_samp_geno.py input.py $complexity_name_for_filter $n_mutations
@@ -58,7 +61,7 @@ from symmetry import compare_polycubes
 from core import import_input, get_params
 from core.validity_checks import valid_sol_checker 
 from utils import shift_coordinates, save_all_genotypes, save_assembly_description
-from utils.binary_utils import  lempel_ziv_complexity, tiledict_orientdict_to_binary
+from utils.binary_utils import  lempel_ziv_complexity76, tiledict_orientdict_to_binary, lempel_ziv_complexity76_symmetric
 from utils.genotype_utils import extract_genotype, n_point_mutate, get_rep_genotype_indices_for_target_complexity,  convert_genostr_to_tile_dict, simplify_tiledict, get_genotype_groups_based_on_complexity
 
 #=====================================================================================================================#
@@ -186,14 +189,14 @@ for g in range(len(grouped_genotypes_with_complexities)):
             #------------------ Step 4: Mutate the genotype ---------------------------------------------------# 
             #======================================================================================================#
             # Mutation performed on original 'unsimplified' genotype
-            mut_genotype = n_point_mutate(n_sides, dim, genotype, n_mutations, irreducible_mutations=True) #returned as str
+            mut_genotype = n_point_mutate(n_sides, dim, og_tile_dict, n_mutations, irreducible_mutations=True) #returned as str
             #print("Mutated genotype", mut_genotype)
 
             #======================================================================================================#
             #--------- Step 5: Convert mutated genotype string to tile_dict and orient_dict ----------------------#
             #======================================================================================================#
             
-            tile_dict = convert_genostr_to_tile_dict(mut_genotype) # convert mutated genotype to tile dictionary
+            tile_dict = mut_genotype #convert_genostr_to_tile_dict(mut_genotype) # mut_genotypes is already tile dict now
             if dim != 2: raise NotImplementedError('only implemented for d=2.')
             orient_dict = {key: 'OOOOUU' for key in tile_dict.keys()}
             all_mut_genotypes.append(list(tile_dict.values()))
@@ -206,20 +209,18 @@ for g in range(len(grouped_genotypes_with_complexities)):
             #======================================================================================================#
             # ---------- Step 6: Run assembly code for this genotype and get the assembled phenotype. ------------#
             #======================================================================================================#
-            
-            output, tile_coord, picked_tiles, complexity, sol_stats = valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_stats)
+            output, tile_coord, picked_tiles, complexity, complexity_species, lz_complexity, sol_stats = valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_stats)
 
             # comp(species) and lz-complexity calculation
-            if output == 1: #? new addition --  no point calculating complexity for invalid shapes
-                complexity_species = len(set(picked_tiles)) # complexity measure: min number of tile species required
+            # if output == 1: #? new addition --  no point calculating complexity for invalid shapes
+            #     complexity_species = len(set(picked_tiles)) # complexity measure: min number of tile species required
 
-                # Remove tiles with all sides as '00' before calculating lz complexity
-                nonzero_tile_dict = {k: v for k, v in tile_dict.items() if not all(side == '00' for side in v)}
-                nonzero_orient_dict = {k: orient_dict[k] for k in nonzero_tile_dict}
-                binary_genotype = tiledict_orientdict_to_binary(n_sides, nonzero_tile_dict, nonzero_orient_dict)
-                lz_complexity = lempel_ziv_complexity(binary_genotype)
+            #     # Remove tiles with all sides as '00' before calculating lz complexity
+            #     nonzero_tile_dict = {k: v for k, v in tile_dict.items() if not all(side == '00' for side in v)}
+            #     nonzero_orient_dict = {k: orient_dict[k] for k in nonzero_tile_dict}
+            #     binary_genotype = tiledict_orientdict_to_binary(n_sides, nonzero_tile_dict, nonzero_orient_dict)
+            #     lz_complexity = lempel_ziv_complexity(binary_genotype)
                 
-
             #======================================================================================================#
             #-------------- Step 7: Compare the new phenotype with all old phenotypes ----------------------------#
             #======================================================================================================#
@@ -298,7 +299,7 @@ for g in range(len(grouped_genotypes_with_complexities)):
         np.savetxt(file_name + 'frequency.txt', frequency, fmt='%d')
         np.savetxt(file_name + 'complexity.txt', complexity_list, fmt='%d')
         np.savetxt(file_name + 'complexity_species.txt', complexity_species_list, fmt='%d')
-        np.savetxt(file_name + 'lz_complexity.txt', lz_complexity_list, fmt='%d')
+        np.savetxt(file_name + 'lz_complexity.txt', lz_complexity_list, fmt='%.3f')
 
         if len(valid_shapes) == 0:
             valid_shapes_to_save = np.array([],dtype=object) # empty array

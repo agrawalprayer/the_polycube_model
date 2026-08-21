@@ -7,11 +7,16 @@ It processes input genotypes to return data on "valid" outputs, their frequencie
 This code is broken down into modules and packages to support reusability.
 
 [Author: Prarthana Agrawal]
-[Date (last modified): 19 May 2025]
-[Version: 1.1] Major fix over V0.1+
+[Date (last modified): 13 July 2026]
+[Version: 2.0] Major fix over V0.1+
 
 Older versions:
 --------------------------------------------------------------------------------------------------------------------
+    # 1.1 [created on 19 May 2025]
+        -modification: earlier complexities (species and LZ) were being calculated for the final trajectory of assembly. Now, complexities are calculated for all k-runs and the minimum complexity is stored. 
+        - Also, realised tile_dict could be smaller than the original tile_dict because of unused tiles during assembly along some k-trajectories. 
+        - Simplified orient_dict in addition to tile_dict before calculating complexities. Wherever a tile interface is '00', assign default orientation based on index 'OOOOUU'. This ensures that the binary genotype is consistent with the simplified tile_dict.
+
     # 1.0 [created on 03 Mar 2025]
         - modification: when valid_shapes contained only 1 shape, the coordinated of the shape were being saved in different lines. To be consistent with multi-shape cases, I have changed the savetxt function to save all coordinates of one shape in one line.
         (minor): calculate complexity(species) and lz complexity only for valid shapes.
@@ -60,7 +65,7 @@ from core.validity_checks import valid_sol_checker # validity of solutions obtai
 from utils import get_batch_range, save_all_genotypes, save_assembly_description, get_exh_genotypes
 from symmetry import compare_polycubes
 from plots import plot_all_cubes
-from utils.genotype_utils import simplify_tiledict
+from utils.genotype_utils import simplify_tiledict, simplify_orientdict
 from utils.binary_utils import tiledict_orientdict_to_binary, lempel_ziv_complexity
 
 #-------------------------------------- Load input.py ----------------------------------------------------------#
@@ -91,7 +96,7 @@ if n_sides > 99: raise NotImplementedError("n_sides should be lesser than 99.")
 
 # if the assembly is split into parallel batches, then get the split number
 if tot_splits > 1: nsplit = int(sys.argv[2])
-else: nsplit = 0 
+else: nsplit = 0 #! what does this mean? 
     
 print(f"nsplit = {nsplit}, tot_splits = {tot_splits}")
 
@@ -210,23 +215,25 @@ for rule_num in range(start_index, end_index):
     # Simplify tile_dict before assembling
     # 1. '00' all neutral sides 2. '00' sides with no partners 3. renumber sides
     tile_dict = simplify_tiledict(params, tile_dict)
+    orient_dict = simplify_orientdict(tile_dict, orient_dict) # simplify orientation dictionary based on simplified tile_dict # assign default orientation wherever tile interface is '00'
 
     #==============================================================================================================#
     #------------------------------------- Main assembly for this genotype ----------------------------------------#
     #==============================================================================================================#
     
     # check if the resulting phenotype is valid or not
-    output, tile_coord, picked_tiles, complexity, sol_stats = valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_stats)
+    output, tile_coord, picked_tiles, complexity, complexity_species, lz_complexity, sol_stats = valid_sol_checker(params, assembly_settings, tile_dict, orient_dict, sol_stats)
 
     # comp(species) and lz-complexity calculation
-    if output == 1: #? new addition --  no point calculating complexity for invalid shapes
-        complexity_species = len(set(picked_tiles)) # complexity measure: min number of tile species required
+    # 1. store complexity along each k-run, 2. take minimum across all k-runs, 3. for a shape, take minimum over all inputs
+    #if output == 1: #? Do not compute complexities only for final trajectory, instead compute minima across all k-runs
+        #complexity_species = len(set(picked_tiles)) # complexity measure: min number of tile species required
 
         # Remove tiles with all sides as '00' before calculating lz complexity
-        nonzero_tile_dict = {k: v for k, v in tile_dict.items() if not all(side == '00' for side in v)}
-        nonzero_orient_dict = {k: orient_dict[k] for k in nonzero_tile_dict}
-        binary_genotype = tiledict_orientdict_to_binary(n_sides, nonzero_tile_dict, nonzero_orient_dict)
-        lz_complexity = lempel_ziv_complexity(binary_genotype)
+        # nonzero_tile_dict = {k: v for k, v in tile_dict.items() if not all(side == '00' for side in v)}
+        # nonzero_orient_dict = {k: orient_dict[k] for k in nonzero_tile_dict}
+        # binary_genotype = tiledict_orientdict_to_binary(n_sides, nonzero_tile_dict, nonzero_orient_dict)
+        # lz_complexity = lempel_ziv_complexity(binary_genotype)
             
     #==============================================================================================================#
     #----------------------- Find out if this is a new shape, store freq and complexities--------------------------#
@@ -288,7 +295,8 @@ plt.show()
 
 # Modify file names to include the directory path
 
-#path_name = "..."
+#debian
+#path_name = "/media/agrawalp/221ceb7e-aa6b-4034-b2ee-bb33de6397d3/polyominoes_new/polycube/runs/{}D/".format(dim)
 
 #if exhaustive_search == 'on':
 #    folder_name = f"{n_tiles}s{n_sides}c_exh/data_files/"
@@ -310,7 +318,7 @@ np.savetxt(file_name + 'shape_type.txt', shape_type, fmt='%d')
 np.savetxt(file_name + 'frequency.txt', frequency, fmt='%d')
 np.savetxt(file_name + 'complexity.txt', complexity_list, fmt='%d')
 np.savetxt(file_name + 'complexity_species.txt', complexity_species_list, fmt='%d')
-np.savetxt(file_name + 'lz_complexity.txt', lz_complexity_list, fmt='%d')
+np.savetxt(file_name + 'lz_complexity.txt', lz_complexity_list, fmt='%.3f')
 
 if len(valid_shapes) == 1: # if valid_shapes = [[(0,0,0)]], then savetxt interprets it as a 3D array
     with open(file_name + 'valid_shapes.txt', 'w') as f:
